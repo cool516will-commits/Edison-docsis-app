@@ -1,81 +1,181 @@
 import math
 import streamlit as st
 
-# 1. 計算核心邏輯
-def calc_speed(ver, direction, bw, qam, ch, overhead_on):
-    # 每個符號的位元數 (log2 QAM)
+# =========================
+# 工程計算核心
+# =========================
+def calc_speed(
+    ver,
+    direction,
+    bw,
+    qam,
+    ch,
+    profile,
+    usable_sc,
+    pilot_eff,
+    control_eff,
+    ldpc_eff,
+    mac_eff
+):
     bits = math.log2(qam)
-    
-    # 設定效率 (Efficiency / Overhead)
-    # 一般 3.0 損耗約 18%，3.1 以上約 10-12%
-    eff = 1.0
-    if overhead_on:
-        eff = 0.82 if ver == "3.0" else 0.88
-        
+
+    # =========================
+    # DOCSIS 3.0 (SC-QAM)
+    # =========================
     if ver == "3.0":
         if direction == "DS":
-            # 3.0 DS: 固定 6 MHz, 標稱 5.360537 Msps
-            return round(5.360537 * bits * eff * ch, 2)
+            sym_rate = 5.360537
         else:
-            # 3.0 US: 固定 6.4 MHz, 標稱 5.12 Msps (符合工程實務)
-            return round(5.12 * bits * eff * ch, 2)
+            sym_rate = 5.12
+
+        mac_eff_30 = 0.82
+        return round(sym_rate * bits * mac_eff_30 * ch, 2)
+
+    # =========================
+    # DOCSIS 3.1 / 4.0 (OFDM)
+    # =========================
     else:
-        # 3.1 / 4.0 OFDM: 直接以頻寬 (MHz) 換算
-        return round(bw * bits * eff * ch, 2)
+        total_eff = (
+            usable_sc *
+            pilot_eff *
+            control_eff *
+            ldpc_eff *
+            mac_eff
+        )
 
-# 2. 網頁介面設定
-st.set_page_config(page_title="DOCSIS Pro 計算機", layout="wide")
+        # D4.0 slight improvement
+        if ver == "4.0":
+            total_eff *= 1.05
 
-# 標題與小圖示
-st.title("📟 DOCSIS 上下行獨立配置計算機")
+        return round(bw * bits * total_eff * ch, 2)
 
-# 側邊欄：控制全域參數
+
+# =========================
+# 頁面設定
+# =========================
+st.set_page_config(page_title="DOCSIS 工程計算機", layout="wide")
+
+st.title("📟 DOCSIS 工程級吞吐量計算機")
+
+# =========================
+# Sidebar 設定
+# =========================
 with st.sidebar:
-    st.header("⚙️ 全域設定")
-    ver = st.selectbox("DOCSIS 版本", ["3.0", "3.1", "4.0"])
-    use_oh = st.toggle("扣除 Overhead (計算實際淨速)", value=False)
-    
-    st.divider()
-    st.subheader("📡 調變設定 (QAM)")
-    qam_list = [16384, 4096, 2048, 1024, 512, 256, 128, 64, 32, 16]
-    ds_qam = st.selectbox("下行 (DS) QAM", qam_list, index=1) # 預設 4096
-    us_qam = st.selectbox("上行 (US) QAM", qam_list, index=5) # 預設 256
-    
-    st.divider()
-    st.caption(f"目前模式: DOCSIS {ver}")
-    st.caption(f"Overhead: {'已扣除' if use_oh else '未扣除 (Raw)'}")
+    st.header("⚙️ 系統設定")
 
-# 主畫面：左右分欄 (在手機上會自動變上下排列)
+    ver = st.selectbox("DOCSIS 版本", ["3.0", "3.1", "4.0"])
+
+    st.divider()
+
+    # QAM
+    qam_list = [16384, 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32, 16]
+    ds_qam = st.selectbox("下行 (DS) QAM", qam_list, index=2)
+    us_qam = st.selectbox("上行 (US) QAM", qam_list, index=6)
+
+    st.divider()
+
+    # 工程模式
+    profile = st.selectbox(
+        "工程效率模型",
+        ["保守", "一般", "理想"],
+        index=1
+    )
+
+    # 預設值
+    if profile == "保守":
+        usable_sc = 0.94
+        pilot_eff = 0.95
+        control_eff = 0.98
+        ldpc_eff = 0.87
+        mac_eff = 0.85
+
+    elif profile == "理想":
+        usable_sc = 0.97
+        pilot_eff = 0.97
+        control_eff = 0.99
+        ldpc_eff = 0.92
+        mac_eff = 0.95
+
+    else:  # 一般（建議）
+        usable_sc = 0.96
+        pilot_eff = 0.96
+        control_eff = 0.985
+        ldpc_eff = 0.89
+        mac_eff = 0.90
+
+    st.divider()
+
+    # 可調參數（進階）
+    st.subheader("🔧 進階調整")
+    usable_sc = st.slider("Subcarrier 可用率", 0.90, 1.0, usable_sc)
+    pilot_eff = st.slider("Pilot 效率", 0.90, 1.0, pilot_eff)
+    control_eff = st.slider("控制訊號效率", 0.95, 1.0, control_eff)
+    ldpc_eff = st.slider("LDPC Coding", 0.80, 1.0, ldpc_eff)
+    mac_eff = st.slider("MAC 效率", 0.80, 1.0, mac_eff)
+
+    st.caption(f"總效率 ≈ {round(usable_sc * pilot_eff * control_eff * ldpc_eff * mac_eff, 3)}")
+
+
+# =========================
+# 主畫面
+# =========================
 col_ds, col_us = st.columns(2)
 
-# --- 下行區塊 ---
+# =========================
+# Downstream
+# =========================
 with col_ds:
     st.subheader("🔵 Downstream (DS)")
-    if ver == "3.0":
-        ds_bw = 6.0
-        st.info("💡 3.0 DS 頻寬固定為 6.0 MHz")
-    else:
-        ds_bw = st.number_input("DS 單一 Block 頻寬 (MHz)", value=192.0, step=6.0, key="ds_bw")
-    
-    ds_ch = st.number_input("DS 信道 / Block 數量", value=32 if ver=="3.0" else 2, min_value=1, key="ds_ch")
-    
-    ds_res = calc_speed(ver, "DS", ds_bw, ds_qam, ds_ch, use_oh)
-    st.metric("下行預估總速率", f"{ds_res} Mbps")
 
-# --- 上行區塊 ---
+    if ver == "3.0":
+        st.info("SC-QAM（固定 Symbol Rate）")
+        ds_bw = 6.0
+        ds_ch = st.number_input("DS Channel 數量", value=32, min_value=1)
+
+    else:
+        st.info("OFDM（含完整工程效率）")
+        ds_bw = st.number_input("DS 單一 Block 頻寬 (MHz)", value=192.0, step=6.0)
+        ds_ch = st.number_input("DS Block 數量", value=2, min_value=1)
+
+    ds_res = calc_speed(
+        ver, "DS", ds_bw, ds_qam, ds_ch,
+        profile,
+        usable_sc, pilot_eff, control_eff, ldpc_eff, mac_eff
+    )
+
+    st.metric("下行總吞吐量", f"{ds_res} Mbps")
+
+
+# =========================
+# Upstream
+# =========================
 with col_us:
     st.subheader("🔴 Upstream (US)")
-    if ver == "3.0":
-        us_bw = 6.4
-        st.info("💡 3.0 US 頻寬固定為 6.4 MHz (5.12 Msps)")
-    else:
-        us_bw = st.number_input("US 單一 Block 頻寬 (MHz)", value=96.0, step=6.4, key="us_bw")
-    
-    us_ch = st.number_input("US 信道 / Block 數量", value=8 if ver=="3.0" else 1, min_value=1, key="us_ch")
-    
-    # 這裡 bw 參數在 3.0 會被 calc_speed 內的 5.12 覆蓋，但仍傳入維持格式
-    us_res = calc_speed(ver, "US", us_bw, us_qam, us_ch, use_oh)
-    st.metric("上行預估總速率", f"{us_res} Mbps")
 
+    if ver == "3.0":
+        st.info("SC-QAM（固定 Symbol Rate）")
+        us_bw = 6.4
+        us_ch = st.number_input("US Channel 數量", value=8, min_value=1)
+
+    else:
+        st.info("OFDMA（含完整工程效率）")
+        us_bw = st.number_input("US 單一 Block 頻寬 (MHz)", value=96.0, step=6.4)
+        us_ch = st.number_input("US Block 數量", value=1, min_value=1)
+
+    us_res = calc_speed(
+        ver, "US", us_bw, us_qam, us_ch,
+        profile,
+        usable_sc, pilot_eff, control_eff, ldpc_eff, mac_eff
+    )
+
+    st.metric("上行總吞吐量", f"{us_res} Mbps")
+
+
+# =========================
+# Footer
+# =========================
 st.divider()
-st.caption("註：此計算機僅供技術評估使用，實際速率受線路品質及 MAC 層效率影響。")
+st.caption("""
+本工具採用工程模型（包含 Subcarrier 利用率、Pilot、控制訊號、LDPC coding 與 MAC scheduling），
+計算結果為實際可用吞吐量估算值（非理論 PHY rate）。
+""")
