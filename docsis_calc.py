@@ -1,13 +1,3 @@
-加進去完全不麻煩，但這正是區分「初階工具」與「專業模擬器」的關鍵。
-
-在 DOCSIS 3.1/4.0 中，Subcarrier Spacing (SCS) 通常有 25 kHz 和 50 kHz 兩種選擇。這會直接影響 FFT Size（8K 或 4K）以及循環前綴（Cyclic Prefix）的開銷。
-
-如果要讓你的程式碼更值錢，我們可以把這個參數加在 Downstream (DS) 的設定中。當使用者調整這個值時，理論值會微幅變動，以符合實務上對不同載波間距的效率要求。
-
-🛠️ 升級版：加入 Subcarrier-BW (SCS) 的完整代碼
-這版程式碼將子載波頻寬納入變數，並確保在預設情況下依然精準對齊 Table 40 與你的 1.7G/8.0G 實測目標。
-
-Python
 import math
 import streamlit as st
 
