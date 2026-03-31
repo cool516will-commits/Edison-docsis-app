@@ -12,7 +12,7 @@ def calc_speed_core(bw, qam, total_eff, ch_count=1):
 # 頁面設定
 # =========================
 st.set_page_config(page_title="DOCSIS 8G 精準實戰版", layout="wide")
-st.title("📟 DOCSIS 工程實戰計算機 (對齊 8G 初點)")
+st.title("📟 DOCSIS 工程吞吐計算機 ")
 
 # =========================
 # Sidebar 設定
@@ -59,7 +59,7 @@ with col_ds:
             s_high = calc_speed_core(ds_bw, ds_base_qam, eff_fix, 3)
             s_low = calc_speed_core(ds_bw, 2048, eff_fix, 2)
             ds_res = round(s_high + s_low, 2)
-            st.success(f"📊 實戰模式：已精準對齊 8G 初點")
+            st.success
         else:
             # 理論模式
             ds_res = round(calc_speed_core(ds_bw, ds_base_qam, total_eff, ds_ch), 2)
