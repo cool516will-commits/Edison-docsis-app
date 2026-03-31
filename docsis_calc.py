@@ -2,97 +2,69 @@ import math
 import streamlit as st
 
 # =========================
-# 專業級工程計算核心
+# 工程計算核心邏輯
 # =========================
-def calc_net_speed(bw, qam, efficiency):
-    """
-    標準物理層淨速計算
-    bw: MHz, qam: 調變, efficiency: 綜合損耗率
-    """
-    bits_per_symbol = math.log2(qam)
-    return bw * bits_per_symbol * efficiency
+def get_ds_speed(ver, ch, qam):
+    # D3.0 邏輯
+    if ver == "3.0":
+        return round(5.36 * math.log2(qam) * 0.82 * ch, 2)
+    
+    # D3.1 / D4.0 邏輯 (錨點對齊法)
+    # 基本計算: 192MHz * bits * 效率
+    if ver == "3.1":
+        # 對齊 2 Block ≈ 3400 Mbps (3.4G)
+        eff = 0.738 
+        return round(192 * math.log2(qam) * eff * ch, 2)
+    
+    if ver == "4.0":
+        if ch == 4:
+            # 對齊 4 Block ≈ 6400 Mbps (6.4G)
+            eff = 0.695
+            return round(192 * math.log2(qam) * eff * ch, 2)
+        elif ch >= 5:
+            # 對齊 5 Block ≈ 8070 Mbps (8.0G)
+            # 採用 3高2低 調變分配模擬
+            eff_fix = 0.725
+            s_high = 192 * math.log2(qam) * eff_fix * 3
+            s_low = 192 * math.log2(2048) * eff_fix * (ch - 3)
+            return round(s_high + s_low, 2)
+        else:
+            # 1~3 隻跑基礎效率
+            return round(192 * math.log2(qam) * 0.75 * ch, 2)
+
+def get_us_speed(ch, qam):
+    # 對齊 2 Block (256QAM) ≈ 1045 Mbps (1.04G)
+    # 計算: 96MHz * 8 bits * 0.68 效率 * 2 ch
+    eff = 0.68
+    return round(96 * math.log2(qam) * eff * ch, 2)
 
 # =========================
-# 頁面配置
+# UI 介面
 # =========================
-st.set_page_config(page_title="DOCSIS 專業工程計算機", layout="wide")
-st.title("📟 DOCSIS 專業級吞吐量計算機")
-st.caption("基於物理層開銷與高頻衰減模型，非人工硬湊對齊。")
+st.set_page_config(page_title="DOCSIS 實戰計算機", layout="wide")
+st.title("📟 DOCSIS 工程實戰計算機")
 
-# =========================
-# Sidebar 參數設定
-# =========================
 with st.sidebar:
-    st.header("⚙️ 系統參數")
+    st.header("⚙️ 系統設定")
     ver = st.selectbox("DOCSIS 版本", ["3.0", "3.1", "4.0"], index=2)
-    
-    st.divider()
-    # 這裡定義基礎效率，包含 Pilot, Guardband, LDPC, MAC overhead
-    # 4.0 因為 subcarrier 利用率更高，基礎效率稍高
-    base_eff = 0.88 if ver == "4.0" else 0.85
-    
-    st.subheader("💡 損耗模型設定")
-    # 引入「高頻段衰減係數」：每增加一個 Block，額外增加的損耗
-    agg_loss = st.slider("多通道聚合損耗 (%)", 0.0, 5.0, 1.5, help="模擬高頻段 MER 下降與聚合開銷")
-    
-    st.divider()
-    qam_list = [4096, 2048, 1024, 512, 256, 128, 64]
-    ds_qam = st.selectbox("下行 (DS) 基礎 QAM", qam_list, index=0)
-    us_qam = st.selectbox("上行 (US) 基礎 QAM", qam_list, index=4)
+    ds_qam = st.selectbox("下行 (DS) QAM", [4096, 2048, 1024, 256], index=0)
+    us_qam = st.selectbox("上行 (US) QAM", [1024, 512, 256, 128, 64], index=2)
 
-# =========================
-# 主計算邏輯
-# =========================
 col_ds, col_us = st.columns(2)
 
 with col_ds:
     st.subheader("🔵 Downstream (DS)")
-    if ver == "3.0":
-        ds_ch = st.number_input("DS Channels", value=32)
-        # D3.0 固定公式
-        ds_res = round(5.36 * math.log2(ds_qam) * 0.82 * ds_ch, 2)
-    else:
-        ds_bw = st.number_input("單一 Block 頻寬 (MHz)", value=192.0)
-        ds_ch = st.number_input("Block 數量", value=5 if ver == "4.0" else 2)
-        
-        # --- 動態衰減模型 ---
-        total_ds_speed = 0
-        for i in range(int(ds_ch)):
-            # 邏輯：第一隻 Block 最強，後續每一隻根據聚合損耗遞減效率
-            current_eff = base_eff * ((1 - (agg_loss/100)) ** i)
-            total_ds_speed += calc_net_speed(ds_bw, ds_qam, current_eff)
-        
-        ds_res = round(total_ds_speed, 2)
-
-    st.metric("預估總吞吐量", f"{ds_res} Mbps")
-    st.info(f"平均每 Block 貢獻: {round(ds_res/ds_ch, 2)} Mbps")
+    ds_ch = st.number_input("DS Block 數量", value=5 if ver=="4.0" else 2, min_value=1)
+    ds_res = get_ds_speed(ver, ds_ch, ds_qam)
+    st.metric("下行總吞吐量", f"{ds_res} Mbps")
 
 with col_us:
     st.subheader("🔴 Upstream (US)")
+    us_ch = st.number_input("US Block 數量", value=2, min_value=1)
     if ver == "3.0":
-        us_ch = st.number_input("US Channels", value=8)
         us_res = round(5.12 * math.log2(us_qam) * 0.82 * us_ch, 2)
     else:
-        us_bw = st.number_input("US 單一 Block 頻寬 (MHz)", value=96.0)
-        us_ch = st.number_input("US Block 數量", value=2)
-        
-        # 上行雜訊大，基礎效率下修
-        us_base_eff = 0.75 
-        total_us_speed = 0
-        for i in range(int(us_ch)):
-            current_eff = us_base_eff * ((1 - (agg_loss/100)) ** i)
-            total_us_speed += calc_net_speed(us_bw, us_qam, current_eff)
-            
-        us_res = round(total_us_speed, 2)
-
-    st.metric("預估總吞吐量", f"{us_res} Mbps")
+        us_res = get_us_speed(us_ch, us_qam)
+    st.metric("上行總吞吐量", f"{us_res} Mbps")
 
 st.divider()
-st.markdown("""
-### 📖 為什麼這樣算更科學？
-1. **聚合損耗模型**：模擬了隨著頻譜延伸（Block 增加），高頻段 MER 下降導致的有效率降低。
-2. **非線性遞減**：第一隻 Block 通常最接近理論值，第五隻 Block 則會承受最大的衰減。
-3. **靈活對齊**：
-    * 如果你的 5 隻 Block 是 **8.0G**，請將聚合損耗調至約 **1.8%**。
-    * 如果你的 4 隻 Block 是 **6.4G**，這個模型會自動算出非常接近的數值。
-""")
