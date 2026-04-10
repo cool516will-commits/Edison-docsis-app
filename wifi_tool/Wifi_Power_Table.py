@@ -11,7 +11,7 @@ qam_to_evm = {
     "64-QAM": -27.0, "256-QAM": -32.0, "1024-QAM": -35.0, "4096-QAM": -38.0
 }
 
-# --- 2. 側邊欄：完整 TX & RX 參數設定 ---
+# --- 2. 側邊欄: TX & RX 參數設定 ---
 with st.sidebar:
     st.header("⚙️ RF Parameters")
     
