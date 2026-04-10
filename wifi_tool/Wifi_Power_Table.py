@@ -1,24 +1,15 @@
 import pandas as pd
+import os
 
-# MCS table (bits per subcarrier, coding rate)
+# ===== MCS TABLE =====
 MCS_TABLE = {
-    0:  (1, 1/2),
-    1:  (2, 1/2),
-    2:  (2, 3/4),
-    3:  (4, 1/2),
-    4:  (4, 3/4),
-    5:  (6, 2/3),
-    6:  (6, 3/4),
-    7:  (6, 5/6),
-    8:  (8, 3/4),
-    9:  (8, 5/6),
-    10: (10, 3/4),
-    11: (10, 5/6),
-    12: (12, 3/4),  # 4096-QAM
-    13: (12, 5/6),
+    0:(1,1/2),1:(2,1/2),2:(2,3/4),3:(4,1/2),
+    4:(4,3/4),5:(6,2/3),6:(6,3/4),7:(6,5/6),
+    8:(8,3/4),9:(8,5/6),10:(10,3/4),11:(10,5/6),
+    12:(12,3/4),13:(12,5/6)
 }
 
-# Subcarriers per bandwidth (approx for HE/EHT)
+# ===== 子載波數 =====
 SUBCARRIERS = {
     20: 234,
     40: 468,
@@ -26,41 +17,44 @@ SUBCARRIERS = {
     160: 1960
 }
 
-# GI 對應 symbol duration (us)
+# ===== Symbol Time (us) =====
 GI_TABLE = {
     0.8: 13.6,
-    1.6: 14.4,
-    3.2: 16.0
+    1.6: 14.4
 }
 
 def calculate_rate(mcs, bw, nss, gi):
-    bits, rate = MCS_TABLE[mcs]
-    subcarriers = SUBCARRIERS[bw]
-    symbol_time = GI_TABLE[gi]
+    if mcs not in MCS_TABLE:
+        raise ValueError(f"MCS錯誤: {mcs}")
 
-    data_rate = (bits * rate * subcarriers * nss) / symbol_time
-    return data_rate  # Mbps
+    bits, coding = MCS_TABLE[mcs]
+    sub = SUBCARRIERS[bw]
+    symbol_time_us = GI_TABLE[gi]
 
-# 建立完整表
-results = []
+    # 🔥 正確公式（轉 Mbps）
+    rate = (bits * coding * sub * nss) / (symbol_time_us * 1e-6) / 1e6
+    return rate
 
-for mcs in range(0, 14):  # MCS 0~13
+# ===== 主程式 =====
+rows = []
+
+for mcs in range(14):
     for bw in [20, 40, 80, 160]:
         for nss in [1, 2, 4]:
             for gi in [0.8, 1.6]:
-                rate = calculate_rate(mcs, bw, nss, gi)
+                try:
+                    r = calculate_rate(mcs, bw, nss, gi)
+                    rows.append([mcs, bw, nss, gi, round(r, 2)])
+                except Exception as e:
+                    print("錯誤:", e)
 
-                results.append({
-                    "MCS": mcs,
-                    "Bandwidth(MHz)": bw,
-                    "NSS": nss,
-                    "GI(us)": gi,
-                    "Data Rate (Mbps)": round(rate, 2)
-                })
+df = pd.DataFrame(rows, columns=["MCS", "BW(MHz)", "NSS", "GI(us)", "Rate(Mbps)"])
 
-df = pd.DataFrame(results)
+# ===== 輸出 =====
+output = os.path.join(os.getcwd(), "wifi_mcs_table.xlsx")
 
-# 存成 Excel
-df.to_excel("wifi_mcs_table.xlsx", index=False)
-
-print("✅ 已產出 wifi_mcs_table.xlsx")
+try:
+    df.to_excel(output, index=False, engine="openpyxl")
+    print("✅ 成功輸出:", output)
+except Exception as e:
+    print("❌ Excel輸出失敗:", e)
