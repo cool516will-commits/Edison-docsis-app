@@ -81,7 +81,7 @@ df = pd.DataFrame(data)
 col_table, col_chart = st.columns([1.2, 0.8])
 
 with col_table:
-    st.subheader("📋 完整 Link Budget 表格")
+    st.subheader("📋 Link Budget 表格")
     st.write(f"當前路徑損耗 (FSPL): **{round(fspl, 1)} dB**")
     st.data_editor(df, use_container_width=True, hide_index=True)
 
