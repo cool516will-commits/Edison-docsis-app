@@ -1,104 +1,69 @@
 import streamlit as st
-import math
 import pandas as pd
+import numpy as np
 
-st.set_page_config(page_title="RF Power Table", layout="wide")
+# 頁面配置
+st.set_page_config(page_title="WiFi Power Tool", layout="wide")
 
-st.title("📡 RF Power Table Calculator (WiFi / DOCSIS)")
+st.title("📶 RF Power Table Calculator (WiFi / DOCSIS)")
 
-# =========================
-# 🔧 Input Section
-# =========================
-st.sidebar.header("🔧 Input Parameters")
+# --- 側邊欄參數 ---
+with st.sidebar:
+    st.header("⚙️ Input Parameters")
+    band = st.selectbox("Frequency Band", ["2.4 GHz", "5 GHz", "6 GHz"])
+    bw = st.selectbox("Bandwidth (MHz)", [20, 40, 80, 160, 320])
+    base_pwr = st.number_input("MCS0 Target Power (dBm)", value=20.0, step=0.5)
+    
+    st.divider()
+    st.info("調整上方數值，下方表格與圖表將自動同步。")
 
-tx_power = st.sidebar.number_input("TX Power (dBm)", value=20.0)
-tx_gain = st.sidebar.number_input("TX Antenna Gain (dBi)", value=5.0)
-tx_loss = st.sidebar.number_input("TX Cable/Connector Loss (dB)", value=2.0)
+# --- 生成 MCS Power Table 數據 ---
+# 定義 WiFi 6/7 常用的 MCS Level
+mcs_levels = [f"MCS{i}" for i in range(13)]
+# 模擬 Power Drop (通常 MCS 越高，為了 EVM，Power 會往下降)
+# 這裡設定每升一階 MCS，Power 約下降 0.5~1 dBm (可手動在網頁修改)
+powers = [round(base_pwr - (i * 0.7), 1) for i in range(len(mcs_list := mcs_levels))]
 
-rx_gain = st.sidebar.number_input("RX Antenna Gain (dBi)", value=3.0)
-rx_loss = st.sidebar.number_input("RX Cable Loss (dB)", value=1.0)
+df = pd.DataFrame({
+    "MCS Level": mcs_levels,
+    "Target Power (dBm)": powers,
+    "EVM Limit (dB)": [-5, -10, -13, -16, -19, -22, -25, -27, -30, -32, -35, -35, -38] # 參考值
+})
 
-frequency = st.sidebar.number_input("Frequency (MHz)", value=5000.0)
-bandwidth = st.sidebar.number_input("Bandwidth (Hz)", value=20e6)
+# --- 主要顯示區 ---
+st.subheader("📊 Power Table Result")
 
-noise_figure = st.sidebar.number_input("Noise Figure (dB)", value=7.0)
-
-wall_loss = st.sidebar.number_input("Wall Loss (dB)", value=5.0)
-shadowing = st.sidebar.number_input("Shadowing (dB)", value=5.0)
-fading_margin = st.sidebar.number_input("Fading Margin (dB)", value=10.0)
-
-distance_list = st.sidebar.text_input("Distances (m, comma separated)", "5,10,20,30")
-
-modulation = st.sidebar.selectbox(
-    "Modulation",
-    ["QAM256", "QAM1024", "QAM4096"]
+# 讓表格可以手動編輯 (Data Editor)
+edited_df = st.data_editor(
+    df, 
+    use_container_width=True, 
+    hide_index=True,
+    column_config={
+        "Target Power (dBm)": st.column_config.NumberColumn(format="%.1f dBm")
+    }
 )
 
-# Required SNR table
-snr_required_table = {
-    "QAM256": 30,
-    "QAM1024": 35,
-    "QAM4096": 42
-}
+# --- 繪製曲線圖 ---
+st.subheader("📈 Power Curve Trend")
+# 使用 Streamlit 內建圖表，最快最穩
+st.line_chart(edited_df.set_index("MCS Level")["Target Power (dBm)"])
 
-required_snr = snr_required_table[modulation]
+# --- 統計與下載 CSV ---
+st.divider()
+col1, col2 = st.columns(2)
 
-# =========================
-# 📐 Functions
-# =========================
-def fspl(d, f):
-    return 20 * math.log10(d) + 20 * math.log10(f) + 32.44
+with col1:
+    avg_pwr = round(edited_df["Target Power (dBm)"].mean(), 2)
+    st.metric("Average TX Power", f"{avg_pwr} dBm")
 
-def noise_floor(bw, nf):
-    return -174 + 10 * math.log10(bw) + nf
+with col2:
+    # 產生 CSV 下載內容
+    csv = edited_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 匯出 Power Table CSV",
+        data=csv,
+        file_name=f"WiFi_Power_Table_{band}_{bw}MHz.csv",
+        mime='text/csv'
+    )
 
-# =========================
-# 🔢 Calculation
-# =========================
-distances = [float(x.strip()) for x in distance_list.split(",")]
-
-rows = []
-
-eirp = tx_power + tx_gain - tx_loss
-nfloor = noise_floor(bandwidth, noise_figure)
-
-for d in distances:
-    path_loss = fspl(d, frequency) + wall_loss + shadowing + fading_margin
-    prx = eirp - path_loss + rx_gain - rx_loss
-    snr = prx - nfloor
-    margin = snr - required_snr
-
-    result = "✅ PASS" if snr >= required_snr else "❌ FAIL"
-
-    rows.append({
-        "Distance (m)": d,
-        "EIRP (dBm)": round(eirp, 2),
-        "Path Loss (dB)": round(path_loss, 2),
-        "Received Power (dBm)": round(prx, 2),
-        "Noise Floor (dBm)": round(nfloor, 2),
-        "SNR (dB)": round(snr, 2),
-        "Required SNR (dB)": required_snr,
-        "Margin (dB)": round(margin, 2),
-        "Result": result
-    })
-
-df = pd.DataFrame(rows)
-
-# =========================
-# 📊 Output
-# =========================
-st.subheader("📊 Power Table Result")
-st.dataframe(df, use_container_width=True)
-
-# =========================
-# 📈 Simple Insight
-# =========================
-st.subheader("📌 Summary")
-
-best = df[df["Result"] == "✅ PASS"]
-
-if not best.empty:
-    max_dist = best["Distance (m)"].max()
-    st.success(f"✅ Max PASS distance: {max_dist} m")
-else:
-    st.error("❌ No valid link under current conditions")
+st.success("✅ 數據已更新。你可以直接在表格中修改 Power 值，圖表會即時跟著動。")
