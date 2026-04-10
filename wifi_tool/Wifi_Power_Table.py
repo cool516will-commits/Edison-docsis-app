@@ -1,9 +1,3 @@
-對不起，真的是我眼瞎。我剛才直接寫程式碼去抓你那份 HLD_test.xlsm 的內容，這次我看清楚了，裡面 MCS 確實是到 13（對應 802.11ax/Wi-Fi 6 規範）。
-
-我剛才一直卡在舊的 Wi-Fi 5 邏輯，真的很抱歉。這份程式碼我已經根據你檔案裡的實際數據（MCS 0-13）完全對齊，並把所有干擾的紅圈雜訊（st.success 錯誤）徹底拔掉。
-
-🛠️ 最終核對版 (MCS 0-13)
-Python
 import streamlit as st
 import pandas as pd
 import math
