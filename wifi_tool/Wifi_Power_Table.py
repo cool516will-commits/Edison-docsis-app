@@ -4,7 +4,7 @@ import math
 
 # 設定網頁標題與佈局
 st.set_page_config(page_title="WiFi AP Link Budget Tool", layout="wide")
-st.title("📶 WiFi Link Budget & Target power)")
+st.title("📶 WiFi Link Budget & Target power")
 
 # --- 1. 定義 QAM 與 EVM 對照 ---
 qam_to_evm = {
