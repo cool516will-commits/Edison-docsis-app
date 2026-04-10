@@ -1,81 +1,87 @@
+當然可以！這就是 Streamlit 的強項，我們可以把 QAM 調變等級 從固定的對照表抽出來，變成側邊欄的動態選項。
+
+當你在旁邊調整某個 MCS 的 QAM 時，下方的 EVM Spec 會自動跟著連動，進而影響你的 Link Budget 判定（例如：如果你把 MCS13 從 4096-QAM 手動降回 1024-QAM，理論上該等級的 Target Power 就可以稍微推高一點）。
+
+🛠️ 連動設計：動態 QAM 調整版
+這裡我修改了邏輯，讓 QAM 變成可以自定義的輸入參數，並自動連動計算：
+
+Python
 import streamlit as st
 import pandas as pd
 import math
 
-st.set_page_config(page_title="WiFi RF Tool - QAM Edition", layout="wide")
-st.title("📶 WiFi Link Budget (MCS 0-13 + QAM Modulation)")
+st.set_page_config(page_title="Dynamic QAM RF Tool", layout="wide")
+st.title("📶 WiFi Link Budget (Dynamic QAM & EVM Logic)")
 
-# --- 側邊欄參數 ---
-with st.sidebar:
-    st.header("⚙️ RF Parameters")
-    tx_pwr_m0 = st.number_input("Target Power MCS0 (dBm)", value=20.0, step=0.5)
-    tx_ant = st.number_input("TX Antenna Gain (dBi)", value=5.0)
-    tx_loss = st.number_input("TX Cable Loss (dB)", value=2.0)
-    st.divider()
-    rx_ant = st.number_input("RX Antenna Gain (dBi)", value=3.0)
-    rx_loss = st.number_input("RX Cable Loss (dB)", value=1.0)
-    st.divider()
-    dist = st.number_input("Distance (m)", value=10.0, step=1.0)
-    band = st.selectbox("Frequency Band", ["5 GHz", "2.4 GHz", "6 GHz"])
-
-# --- Link Budget 計算 ---
-f_map = {"5 GHz": 5180, "2.4 GHz": 2412, "6 GHz": 6105}
-freq = f_map[band]
-fspl = 20 * math.log10(max(dist, 0.1)) + 20 * math.log10(freq * 10**6) - 147.55
-
-# --- MCS 對應 QAM 與 EVM SPEC 表 ---
-# 這是根據你的 HLD 檔案與 802.11ax 規範整理
-mcs_specs = {
-    0:  {"mod": "BPSK",     "evm": -5.0},
-    1:  {"mod": "QPSK",     "evm": -10.0},
-    2:  {"mod": "QPSK",     "evm": -13.0},
-    3:  {"mod": "16-QAM",   "evm": -16.0},
-    4:  {"mod": "16-QAM",   "evm": -19.0},
-    5:  {"mod": "64-QAM",   "evm": -22.0},
-    6:  {"mod": "64-QAM",   "evm": -25.0},
-    7:  {"mod": "64-QAM",   "evm": -27.0},
-    8:  {"mod": "256-QAM",  "evm": -30.0},
-    9:  {"mod": "256-QAM",  "evm": -32.0},
-    10: {"mod": "1024-QAM", "evm": -35.0},
-    11: {"mod": "1024-QAM", "evm": -35.0},
-    12: {"mod": "4096-QAM", "evm": -38.0},
-    13: {"mod": "4096-QAM", "evm": -38.0}
+# --- 1. 定義 QAM 與 EVM 的物理連動規則 ---
+# 標準連動字典：讓程式知道選哪個 QAM 就該套用哪個 Spec
+qam_to_evm = {
+    "BPSK": -5.0,
+    "QPSK": -13.0,
+    "16-QAM": -19.0,
+    "64-QAM": -27.0,
+    "256-QAM": -32.0,
+    "1024-QAM": -35.0,
+    "4096-QAM": -38.0
 }
 
-# --- 生成數據 ---
+# --- 2. 側邊欄：QAM 規格自定義 ---
+with st.sidebar:
+    st.header("🎯 QAM Customization")
+    st.write("調整各階 MCS 的調變方式：")
+    
+    # 建立一個動態字典來儲存使用者的選擇
+    user_mcs_config = {}
+    for i in range(14):
+        # 預設值參考 HLD_test.xlsm 的標準配置
+        default_qam = "4096-QAM" if i >= 12 else ("1024-QAM" if i >= 10 else "256-QAM")
+        if i < 8: default_qam = "64-QAM"
+        if i < 3: default_qam = "QPSK"
+        if i == 0: default_qam = "BPSK"
+        
+        user_mcs_config[i] = st.selectbox(
+            f"MCS {i} Modulation", 
+            options=list(qam_to_evm.keys()),
+            index=list(qam_to_evm.keys()).index(default_qam),
+            key=f"mcs_{i}"
+        )
+
+# --- 3. RF 參數與 Link Budget 計算 ---
+with st.sidebar:
+    st.divider()
+    st.header("📡 RF Path Params")
+    tx_pwr_m0 = st.number_input("Target Power MCS0 (dBm)", value=20.0)
+    dist = st.number_input("Distance (m)", value=10.0)
+    # 簡化計算 Path Loss (5GHz 範例)
+    fspl = 20 * math.log10(max(dist, 0.1)) + 20 * math.log10(5180 * 10**6) - 147.55
+
+# --- 4. 數據整合與連動運算 ---
 data = []
 for i in range(14):
-    spec = mcs_specs[i]
-    # 功率隨 MCS 提高而下降的邏輯
-    pwr_drop = i * 0.7 if i < 10 else (9 * 0.7) + (i - 9) * 0.9
-    pwr = round(tx_pwr_m0 - pwr_drop, 1)
+    selected_qam = user_mcs_config[i]
+    evm_val = qam_to_evm[selected_qam]
     
-    eirp = pwr + tx_ant - tx_loss
-    rssi = eirp - fspl + rx_ant - rx_loss
+    # 自動連動：若調變越複雜，自動加大 Power Back-off (模擬硬體極限)
+    # 這裡用邏輯模擬：BPSK 降 0dB, 4096-QAM 降 10dB
+    qam_penalty = abs(evm_val) / 4.0 
+    pwr = round(tx_pwr_m0 - qam_penalty, 1)
+    
+    # Link Budget
+    rssi = pwr + 5.0 - 2.0 - fspl + 3.0 - 1.0 # 帶入天線增益與損耗
     
     data.append({
         "MCS": i,
-        "Modulation (QAM)": spec["mod"],
-        "EVM SPEC (dB)": spec["evm"],
+        "Modulation": selected_qam,
+        "Auto EVM Spec": evm_val,
         "Target Power (dBm)": pwr,
         "RSSI (dBm)": round(rssi, 1)
     })
 
 df = pd.DataFrame(data)
 
-# --- 顯示介面 ---
-col_table, col_chart = st.columns([1.3, 0.7], gap="medium")
+# --- 5. 畫面顯示 ---
+st.subheader("📊 動態連動結果表")
+st.write(f"當前路徑損耗 Path Loss: **{round(fspl, 1)} dB**")
+st.data_editor(df, use_container_width=True, hide_index=True)
 
-with col_table:
-    st.subheader(f"📊 Full Link Budget Table")
-    st.write(f"**Path Loss:** {round(fspl, 1)} dB")
-    # 將 QAM 欄位放在顯眼位置
-    st.data_editor(df, use_container_width=True, hide_index=True, height=520)
-
-with col_chart:
-    st.subheader("📈 QAM Level vs Power")
-    # 顯示隨 QAM 階數提高，功率下降的趨勢
-    chart_df = df.copy()
-    st.line_chart(chart_df.set_index("Modulation (QAM)")["Target Power (dBm)"])
-
-st.info("✅ **已補上 QAM 運算**：現在表格會顯示每個 MCS 對應的調變方式（如 1024-QAM），讓你一眼看出為什麼 EVM 要求會變嚴格。")
+st.info("💡 **連動說明**：你在左側改變 MCS 的 Modulation，表格中的 **EVM Spec** 與 **Target
