@@ -76,4 +76,4 @@ st.subheader("📊 動態連動結果表")
 st.write(f"當前路徑損耗 Path Loss: **{round(fspl, 1)} dB**")
 st.data_editor(df, use_container_width=True, hide_index=True)
 
-st.info("💡 **連動說明**：你在左側改變 MCS 的 Modulation，表格中的 **EVM Spec** 與 **Target
+st.info("💡 **連動說明**：你在左側改變 MCS 的 Modulation，表格中的 **EVM Spec** 與 **Target Power** 會即時變動。這模擬了硬體為了達到高階 QAM 必須犧牲功率的真實情況。")
