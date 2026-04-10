@@ -1,11 +1,3 @@
-當然可以！這就是 Streamlit 的強項，我們可以把 QAM 調變等級 從固定的對照表抽出來，變成側邊欄的動態選項。
-
-當你在旁邊調整某個 MCS 的 QAM 時，下方的 EVM Spec 會自動跟著連動，進而影響你的 Link Budget 判定（例如：如果你把 MCS13 從 4096-QAM 手動降回 1024-QAM，理論上該等級的 Target Power 就可以稍微推高一點）。
-
-🛠️ 連動設計：動態 QAM 調整版
-這裡我修改了邏輯，讓 QAM 變成可以自定義的輸入參數，並自動連動計算：
-
-Python
 import streamlit as st
 import pandas as pd
 import math
